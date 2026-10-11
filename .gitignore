@@ -1,0 +1,10 @@
+bin/
+obj/
+artifacts/
+*.user
+*.suo
+*.log
+/settings.json*
+/HardwareHistory.json*
+/TrafficHistory.json*
+/LiteMonitor_Error.log

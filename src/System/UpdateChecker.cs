@@ -91,6 +91,14 @@ namespace LiteMonitor
         {
             try
             {
+                // 关闭自动检查时，在联网前退出，避免后台请求和新版本提示。
+                // 手动“检查更新”仍可使用。
+                if (!showMessage && !Settings.Load().AutoCheckUpdate)
+                {
+                    LatestVersionInfo = null;
+                    return;
+                }
+
                 // ---- 获取版本信息（自动 fallback）----
                 var info = await GetVersionInfo();
                 if (info == null)

@@ -32,6 +32,7 @@ namespace LiteMonitor.src.SystemServices
         public ISensor? CpuBusSpeedSensor { get; private set; }
 
         private DateTime _lastMapBuild = DateTime.MinValue;
+        private volatile bool _gpuSensorsChanged;
         
         // ★★★ [优化 1] 移除了全系统传感器指纹相关字段 ★★★
         private readonly object _lock = new object();
@@ -39,14 +40,37 @@ namespace LiteMonitor.src.SystemServices
         // ★★★ [新增] 配置引用 ★★★
         private Settings _cfg;
 
-        // [Fix] 回归 v1.2.9 的简单逻辑
-        // 只有在初始化时才需要 build，之后除非手动触发或 10 分钟兜底，否则不需要任何检测。
-        // EnsureFresh 的返回值改为 void，因为不需要外部感知是否重建。
-        public void EnsureFresh(Computer computer, Settings cfg) 
+        // Intel Arc 的占用传感器可能在首次 Update 后才激活。
+        // 只在传感器集合变化或定期维护时重建，并通知调用方同步读取缓存。
+        public bool EnsureFresh(Computer computer, Settings cfg)
         {
-            if ((DateTime.Now - _lastMapBuild).TotalMinutes > 10)
+            if (_gpuSensorsChanged || (DateTime.Now - _lastMapBuild).TotalMinutes > 10)
             {
                 Rebuild(computer, cfg);
+                return true;
+            }
+            return false;
+        }
+
+        private void OnGpuSensorsChanged(ISensor sensor)
+        {
+            // 回调只标记失效；不要在硬件 Update 内重建或枚举传感器。
+            _gpuSensorsChanged = true;
+        }
+
+        private void SetCachedGpu(IHardware? gpu)
+        {
+            if (ReferenceEquals(CachedGpu, gpu)) return;
+            if (CachedGpu != null)
+            {
+                CachedGpu.SensorAdded -= OnGpuSensorsChanged;
+                CachedGpu.SensorRemoved -= OnGpuSensorsChanged;
+            }
+            CachedGpu = gpu;
+            if (CachedGpu != null)
+            {
+                CachedGpu.SensorAdded += OnGpuSensorsChanged;
+                CachedGpu.SensorRemoved += OnGpuSensorsChanged;
             }
         }
 
@@ -56,7 +80,8 @@ namespace LiteMonitor.src.SystemServices
             {
                 _map.Clear();
                 CpuCoreCache.Clear();
-                CachedGpu = null;
+                SetCachedGpu(null);
+                _gpuSensorsChanged = false;
                 CpuBusSpeedSensor = null;
                 // _lastSensorFingerprint = 0; // 已移除
             }
@@ -286,10 +311,11 @@ namespace LiteMonitor.src.SystemServices
                 foreach (var kv in newMap) _map[kv.Key] = kv.Value;
                 
                 CpuCoreCache = newCpuCache;
-                CachedGpu = newGpu;
+                SetCachedGpu(newGpu);
                 CpuBusSpeedSensor = newBusSensor; // ★ 更新 Bus Sensor 缓存
                 
                 _lastMapBuild = DateTime.Now;
+                _gpuSensorsChanged = false;
                 // ★★★ [优化 3] 指纹记录已移除 ★★★
             }
         }

@@ -1,5 +1,7 @@
 [English](./README.en.md)
 
+> 本 fork 包含 Intel Arc B580 首次启动／开机自启动时 GPU 占用读取修复，并默认关闭自动更新。详见 [修复说明与验证方法](docs/B580-startup-fix.md)。请从此 fork 源码编译；下方上游下载链接不包含本地修复。
+
 # <img src="./resources/screenshots/logo.png"  width="28" style="vertical-align: middle; margin-top: -4px;" /> LiteMonitor
 一款轻量、可定制的开源桌面硬件监控软件 — 实时监测 CPU、GPU、内存、磁盘、网络等系统性能。
 

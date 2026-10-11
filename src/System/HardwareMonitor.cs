@@ -182,11 +182,6 @@ namespace LiteMonitor.src.SystemServices
 
                 lock (_lock)
                 {
-                    // [Optimization] 极简维护
-                    // 仅每10分钟做一次兜底检查 (内部自动 Rebuild)，无需关心返回值。
-                    // 即使重建了，ValueProvider 会在下一次取值时懒加载或直接从 Map 取，也不需要手动 PreCache。
-                    _sensorMap.EnsureFresh(_computer, _cfg);
-
                     // 3秒一次 (慢速扫描)
                     bool isSlowScanTick = (_secondsCounter % 3 == 0); 
                     // 10秒一次 (磁盘后台扫描)
@@ -238,6 +233,13 @@ namespace LiteMonitor.src.SystemServices
                              continue;
                         }
                     }
+
+                    // 必须在 Update 后检测：Arc/D3D 传感器可能刚在本轮被激活。
+                    // ValueProvider 保存了独立的传感器副本，重建映射后必须一起刷新。
+                    if (_sensorMap.EnsureFresh(_computer, _cfg))
+                    {
+                        _valueProvider.PreCacheAllSensors(_sensorMap);
+                    }
                 }
                 
                 // 任务错峰执行 (调用 SystemOptimizer)
@@ -279,6 +281,7 @@ namespace LiteMonitor.src.SystemServices
             {
                 try 
                 {
+                    _sensorMap.Clear();
                     // 将 Close 操作放入锁内，确保此时 UpdateAll 不在运行
                     _computer.Close(); 
                 }
@@ -301,9 +304,9 @@ namespace LiteMonitor.src.SystemServices
 
         private void InitializeAsync()
         {
+            _isOpening = true;
             Task.Run(async () =>
             {
-                _isOpening = true;
                 try
                 {
                     // ★★★ [新增] 启动计数器预热 (不阻塞主 UI) ★★★
@@ -493,10 +496,9 @@ namespace LiteMonitor.src.SystemServices
                     WarmUpBatterySensors();
 
                     DisableSensorHistory();
+                    _sensorMap.Rebuild(_computer, _cfg);
+                    _valueProvider.PreCacheAllSensors(_sensorMap);
                 }
-
-                _sensorMap.Rebuild(_computer, _cfg);
-                _valueProvider.PreCacheAllSensors(_sensorMap);
 
                 // 4. 优化 T1：重置后再次修剪内存
                 GC.Collect();

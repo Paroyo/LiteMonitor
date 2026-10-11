@@ -1,5 +1,7 @@
 [中文文档](./README.md)
 
+> This fork fixes missing Intel Arc B580 GPU utilization on startup and disables automatic update checks by default. See the [fix notes and validation commands](docs/B580-startup-fix.md). Build from this fork's source; the upstream downloads below do not include this fix.
+
 # <img src="./resources/screenshots/logo.png"  width="28" style="vertical-align: middle; margin-top: -4px;" /> LiteMonitor
 
 A lightweight and fully customizable **Windows hardware monitor** — track CPU, GPU, memory, disk, and network statistics in real time.
