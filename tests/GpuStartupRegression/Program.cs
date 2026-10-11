@@ -106,6 +106,69 @@ using (var f = new Fixture(""))
     Check(f.Provider.GetValue("GPU.Load") == 63f, "periodic rebuild refreshes provider copy");
     Console.WriteLine("PASS: periodic rebuild refreshes both caches");
 }
+foreach (bool renderFirst in new[] { false, true })
+{
+    using var f = new Fixture("/b580");
+    ISensor render;
+    if (renderFirst)
+    {
+        render = f.Arc.AddAdditionalLoad("GPU Render/Compute", 88f);
+        f.Arc.AddLoad(9f);
+    }
+    else
+    {
+        f.Arc.AddLoad(9f);
+        render = f.Arc.AddAdditionalLoad("GPU Render/Compute", 88f);
+    }
+    f.Tick();
+    Check(f.Provider.GetValue("GPU.Load") == 88f, "Arc prefers render/compute regardless of enumeration order");
+    Check(f.Map.TryGetSensor("GPU.Load", out var mapped) && ReferenceEquals(mapped, render), "mapping selects render/compute");
+    foreach (float? invalid in new float?[] { null, float.NaN, float.PositiveInfinity, -1f, 101f })
+    {
+        ((SensorProxy)(object)render).Value = invalid;
+        f.Tick();
+        Check(f.Provider.GetValue("GPU.Load") == 9f, "invalid render/compute falls back to core");
+    }
+    ((SensorProxy)(object)render).Value = 0f;
+    f.Tick();
+    Check(f.Provider.GetValue("GPU.Load") == 0f, "valid idle render/compute does not fall back");
+    ((SensorProxy)(object)render).Value = 76f;
+    f.Tick();
+    Check(f.Provider.GetValue("GPU.Load") == 76f, "render/compute recovers without sensor event");
+    ((SensorProxy)(object)render).Value = null;
+    ((SensorProxy)(object)f.Arc.Load!).Value = null;
+    var d3d = f.Arc.AddAdditionalLoad("D3D 3D", 43f);
+    f.Tick();
+    Check(f.Provider.GetValue("GPU.Load") == 43f, "D3D fallback is used when render and core are invalid");
+    f.Arc.RemoveSensor(d3d);
+    f.Tick();
+    Check(f.Provider.GetValue("GPU.Load") == null, "removed fallback is no longer cached");
+    ((SensorProxy)(object)f.Arc.Load!).Value = 9f;
+    f.Arc.RemoveSensor(render);
+    f.Tick();
+    Check(f.Provider.GetValue("GPU.Load") == 9f, "removed render/compute falls back to core");
+    Console.WriteLine($"PASS: render/compute preference, invalid fallback, idle and recovery; renderFirst={renderFirst}");
+}
+
+using (var f = new Fixture(""))
+{
+    f.Tick();
+    Check(f.Provider.GetValue("GPU.Load") == 37f, "core remains supported before render activation");
+    f.Arc.AddAdditionalLoad("GPU Media", 100f);
+    var render = f.Arc.AddAdditionalLoad("GPU Render/Compute", 91f);
+    f.Tick();
+    Check(f.Provider.GetValue("GPU.Load") == 91f, "late render activation replaces core through both caches");
+    ((SensorProxy)(object)render).Value = null;
+    ((SensorProxy)(object)f.Arc.Load!).Value = null;
+    f.Tick();
+    Check(f.Provider.GetValue("GPU.Load") == null, "invalid Arc readings do not use AMD or media load");
+    f.Config.PreferredGpu = "/amd";
+    f.Amd.AddAdditionalLoad("GPU Render/Compute", 99f);
+    f.Tick();
+    Check(f.Provider.GetValue("GPU.Load") == 12f, "other vendors retain their existing load selection");
+    Console.WriteLine("PASS: late render activation, invalid data, GPU selection and vendor isolation");
+}
+
 Check(!new Settings().AutoCheckUpdate, "automatic updates disabled by default");
 var settingsInstanceField = typeof(Settings).GetField("_instance", BindingFlags.Static | BindingFlags.NonPublic)!;
 var previousSettingsInstance = settingsInstanceField.GetValue(null);
@@ -217,6 +280,7 @@ sealed class FakeGpu : Hardware
         if (Load != null) DeactivateSensor(Load);
         Load = null;
     }
+    public void RemoveSensor(ISensor sensor) => DeactivateSensor(sensor);
 }
 
 public class GroupProxy : DispatchProxy
@@ -230,7 +294,7 @@ public class SensorProxy : DispatchProxy
 {
     public IHardware Owner { get; set; } = null!;
     public string SensorName { get; set; } = "GPU Core";
-    public float Value { get; set; }
+    public float? Value { get; set; }
     protected override object? Invoke(MethodInfo? method, object?[]? args) => method!.Name switch
     {
         "get_Hardware" => Owner,

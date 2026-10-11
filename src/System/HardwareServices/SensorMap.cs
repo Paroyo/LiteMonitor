@@ -219,6 +219,18 @@ namespace LiteMonitor.src.SystemServices
                                 continue;
                             }
 
+                            // Arc 独显优先使用 Render/Compute；仅比较同一张卡的指标。
+                            if (key == "GPU.Load" && ReferenceEquals(existing.Hardware, hw))
+                            {
+                                bool existingPreferred = SensorMatcher.IsPreferredIntelGpuLoad(existing);
+                                bool newPreferred = SensorMatcher.IsPreferredIntelGpuLoad(s);
+                                if (existingPreferred != newPreferred)
+                                {
+                                    if (newPreferred) newMap[key] = s;
+                                    continue;
+                                }
+                            }
+
                             // 2. 如果优先级相同 (通常是同一张显卡的不同传感器，或者是两张同样的显卡)，
                             // 则应用 D3D vs Vendor 优选逻辑。
                             bool existingIsD3D = existing.Name.Contains("D3D", StringComparison.OrdinalIgnoreCase);

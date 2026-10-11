@@ -13,6 +13,12 @@ namespace LiteMonitor.src.SystemServices
         // 复用 HardwareRules 的字符串匹配，避免重复造轮子
         private static bool Has(string source, string sub) => HardwareRules.Has(source, sub);
 
+        public static bool IsPreferredIntelGpuLoad(ISensor sensor) =>
+            sensor.Hardware.HardwareType == HardwareType.GpuIntel &&
+            HardwareRules.IsDiscreteArc(sensor.Hardware.Name) &&
+            sensor.SensorType == SensorType.Load &&
+            sensor.Name.Equals("GPU Render/Compute", StringComparison.OrdinalIgnoreCase);
+
         /// <summary>
         /// 尝试匹配传感器名称到标准 Key
         /// </summary>
@@ -71,7 +77,8 @@ namespace LiteMonitor.src.SystemServices
             // --- GPU ---
             if (type is HardwareType.GpuNvidia or HardwareType.GpuAmd or HardwareType.GpuIntel)
             {
-                if (s.SensorType == SensorType.Load && (Has(name, "core") || Has(name, "d3d 3d"))) return "GPU.Load";
+                if (s.SensorType == SensorType.Load &&
+                    (Has(name, "core") || Has(name, "d3d 3d") || IsPreferredIntelGpuLoad(s))) return "GPU.Load";
                 if (s.SensorType == SensorType.Temperature && (Has(name, "core") || Has(name, "hot spot") || Has(name, "soc") || Has(name, "vr"))) return "GPU.Temp";
                 
                 // VRAM Logic (简化且准确)

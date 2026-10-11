@@ -16,6 +16,16 @@
 
 此 fork 同时默认关闭自动更新。关闭后，后台检查在联网之前返回，并清除缓存的新版本提示；用户仍可手动检查更新，或在设置中重新开启自动检查。
 
+## B580 占用指标选择
+
+Intel Arc 独显优先将 `GPU Render/Compute` 映射为 GPU 占用，适合观察游戏与渲染负载。原来的 `GPU Core` 来自 Intel 全局活动计数器，与任务管理器的“最忙引擎”统计口径不同。此选择不改变其他厂商或 Intel 核显的原有逻辑。
+
+Render/Compute 不存在时沿用原指标；该传感器存在但读数缺失、非有限值或超出 0–100% 时，使用同卡 GPU Core，再使用同卡 D3D 3D。有效的 0% 不触发回退。首选指标恢复后立即恢复读取，无需切换显卡；启动后才激活时会同步刷新两层缓存。
+
+此指标仍不保证与任务管理器完全一致。任务管理器总占用取最忙 GPU 引擎，视频等负载可能使用其他引擎；刷新周期和界面平滑也会影响即时读数。
+
+参考：[硬件库 IntelDiscreteGpu 实现](https://github.com/LibreHardwareMonitor/LibreHardwareMonitor/blob/v0.9.6/LibreHardwareMonitorLib/Hardware/Gpu/IntelDiscreteGpu.cs)、[微软 GPU 统计说明](https://devblogs.microsoft.com/directx/gpus-in-the-task-manager/)、[Intel 对 B580 指标问题的回复](https://github.com/IGCIT/Intel-GPU-Community-Issue-Tracker-IGCIT/issues/1562)。
+
 ## 验证
 
 ```powershell

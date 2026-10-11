@@ -28,6 +28,7 @@ namespace LiteMonitor.src.SystemServices
 
         // 对象级缓存：(Sensor对象)
         private Dictionary<string, ISensor> _manualSensorCache = new();
+        private ISensor[] _gpuLoadFallbackSensors = Array.Empty<ISensor>();
 
         private const float AutoMoboTempHardMax = 95f;
         private const float ManualMoboTempHardMax = 125f;
@@ -61,6 +62,15 @@ namespace LiteMonitor.src.SystemServices
         public void PreCacheAllSensors(SensorMap map)
         {
             var newCache = map.GetInternalMap();
+            // 仅缓存首选 Arc 指标所在显卡的备用占用传感器，避免混入核显数据。
+            var gpuLoadFallbacks = Array.Empty<ISensor>();
+            if (newCache.TryGetValue("GPU.Load", out var gpuLoad) && SensorMatcher.IsPreferredIntelGpuLoad(gpuLoad))
+            {
+                gpuLoadFallbacks = gpuLoad.Hardware.Sensors
+                    .Where(s => !ReferenceEquals(s, gpuLoad) && SensorMatcher.Match(gpuLoad.Hardware, s) == "GPU.Load")
+                    .OrderBy(s => s.Name.Contains("D3D", StringComparison.OrdinalIgnoreCase) ? 1 : 0)
+                    .ToArray();
+            }
 
             // 记录当前预热的配置版本
             _lastPrefCpuFan = _cfg.PreferredCpuFan;
@@ -130,6 +140,7 @@ namespace LiteMonitor.src.SystemServices
             lock (_lock)
             {
                 _manualSensorCache = newCache;
+                _gpuLoadFallbackSensors = gpuLoadFallbacks;
                 _tickCache.Clear();
                 _componentProcessor.ClearCache();
             }
@@ -179,6 +190,7 @@ namespace LiteMonitor.src.SystemServices
             lock (_lock)
             {
                 _manualSensorCache.Clear();
+                _gpuLoadFallbackSensors = Array.Empty<ISensor>();
                 _tickCache.Clear();
                 _componentProcessor.ClearCache();
             }
@@ -290,6 +302,22 @@ namespace LiteMonitor.src.SystemServices
                 // ★★★ [终极优化] 使用 switch 替代 if-else 链，实现 O(1) 哈希跳转 ★★★
                 switch (key)
                 {
+                    case "GPU.Load":
+                        if (_manualSensorCache.TryGetValue(key, out var gpuLoad) && SensorMatcher.IsPreferredIntelGpuLoad(gpuLoad))
+                        {
+                            skipGenericFallback = true;
+                            result = ReadGpuLoad(gpuLoad);
+                            if (!result.HasValue)
+                            {
+                                foreach (var fallback in _gpuLoadFallbackSensors)
+                                {
+                                    result = ReadGpuLoad(fallback);
+                                    if (result.HasValue) break;
+                                }
+                            }
+                        }
+                        break;
+
                     // 1. CPU.Load
                     case "CPU.Load":
                         if (useCounter)
@@ -526,6 +554,13 @@ namespace LiteMonitor.src.SystemServices
             {
                 if (lockTaken) Monitor.Exit(_lock);
             }
+        }
+
+        private static float? ReadGpuLoad(ISensor sensor)
+        {
+            var value = sensor.Value;
+            return value.HasValue && float.IsFinite(value.Value) && value.Value >= 0f && value.Value <= 100f
+                ? value : null;
         }
 
         private float? ReadMoboTemperature(ISensor sensor)

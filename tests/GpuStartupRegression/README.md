@@ -10,6 +10,8 @@ dotnet run --project tests/GpuStartupRegression -c Release
 
 覆盖自动选择、Identifier 与旧显卡名称配置、首次更新激活、第四次更新才激活、传感器移除与重新激活、空闲 0%、切换显卡后解除旧事件、清空重建及十分钟维护后读取缓存同步。
 
+同时覆盖 Arc Render/Compute 优先级与枚举顺序无关、无效读数时同卡回退、0% 不回退、读数恢复、延迟激活，以及其他厂商选择规则保持原样。自动更新关闭时检查入口必须在联网之前返回。
+
 可选真实硬件探测：
 
 ```powershell
